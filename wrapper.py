@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Union
 from cerebras.cloud.sdk import Cerebras
 from groq import Groq
+import openai
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, func
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.dialects.postgresql import JSONB  # For PostgreSQL JSONB field
@@ -55,6 +56,7 @@ MASTER_SERVICE_API_KEYS = {
     # Add more services as needed
     "cerebras": "csk-e2e8kypw838rwmpjxd9nx2vn5jrertm339fnrcnt9c6p8hmx",
     "groq": "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",
+    "sambanova": "2e1e850b-24f9-4abd-89a6-5cfc61d4ca50"
 }
 
 for service, api_key in MASTER_SERVICE_API_KEYS.items():
@@ -87,6 +89,13 @@ SERVICE_MODELS = {
     "cerebras": {
         "llama3.1-8b",
         "llama3.1-70b"
+    },
+    "sambanova": {
+        "Meta-Llama-3.1-8B-Instruct",
+        "Meta-Llama-3.1-70B-Instruct",
+        "Meta-Llama-3.1-405B-Instruct",
+        "Meta-Llama-3.2-1B-Instruct",
+        "Meta-Llama-3.2-3B-Instruct"
     }
 }
 
@@ -332,6 +341,15 @@ async def chat_completions(
 
         elif service_name == "groq":
             chat_completion = client.chat.completions.create(**api_call_params)
+            content_in_response = chat_completion.choices[0].message.content
+        
+        elif service_name == "sambanova":
+            # Add API key and base URL to parameters
+            api_call_params["api_key"] = MASTER_SERVICE_API_KEYS['sambanova']
+            api_call_params["api_base"] = "https://api.sambanova.ai/v1"
+
+            # Process the request and capture the raw response
+            chat_completion = openai.ChatCompletion.create(**api_call_params)
             content_in_response = chat_completion.choices[0].message.content
 
         else:
