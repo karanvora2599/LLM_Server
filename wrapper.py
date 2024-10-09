@@ -58,6 +58,35 @@ MASTER_SERVICE_API_KEYS = {
 for service, api_key in MASTER_SERVICE_API_KEYS.items():
     if not api_key:
         raise Exception(f"Master API key for {service} is not set in environment variables.")
+    
+# Available models for each service
+SERVICE_MODELS = {
+    "groq": {
+        "gemma-7b-it",
+        "gemma-9b-it",
+        "llama3-groq-70b-8192-tool-use-preview",
+        "llama3-groq-8b-8192-tool-use-preview",
+        "distil-whisper-large-v3-en",
+        "llama-3.1-70b-versatile",
+        "llama-3.1-8b-instant",
+        "llama-3.2-11b-text-preview",
+        "llama-3.2-11b-vision-preview",
+        "llama-3.2-1b-preview",
+        "llama-3.2-3b-preview",
+        "llama-3.2-90b-text-preview",
+        "llama-guard-3-8b",
+        "llama3-70b-8192",
+        "llama-8b-8192",
+        "mixtral-8x7b-32768",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+        "llava-v1.5-7b-4096-preview"
+    },
+    "cerebras": {
+        "llama3.1-8b",
+        "llama3.1-70b"
+    }
+}
 
 # Models
 class Message(BaseModel):
@@ -185,6 +214,15 @@ async def chat_completions(
     model_name = request.model
 
     try:
+        # Validate the service name
+        if service_name not in SERVICE_MODELS:
+            raise ValueError(f"Unsupported service_name: {service_name}")
+
+        # Validate the model availability
+        available_models = SERVICE_MODELS[service_name]
+        if model_name not in available_models:
+            raise ValueError(f"Model '{model_name}' is not available for service '{service_name}'.")
+
         client = get_master_client(service_name)
         messages = [message.dict() for message in request.messages]
 
@@ -205,7 +243,7 @@ async def chat_completions(
                 messages=messages,
                 model=model_name,
             )
-            content_in_response = chat_completion.get('content', '')
+            content_in_response = chat_completion.choices[0].message.content
 
         elif service_name == "groq":
             chat_completion = client.chat.completions.create(
@@ -217,7 +255,7 @@ async def chat_completions(
         else:
             raise ValueError(f"Unsupported service_name: {service_name}")
 
-        # Log the data to the database
+        # # Log the data to the database
         # log_entry = ChatLog(
         #     client_name=client_name,
         #     client_email=client_email,
@@ -231,7 +269,8 @@ async def chat_completions(
         return ChatCompletionResponse(content=content_in_response)
 
     except ValueError as ve:
+        logger.error(f"ValueError in chat_completions endpoint: {ve}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Error in chat_completions endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal Server Error")
