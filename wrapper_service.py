@@ -2,8 +2,8 @@ import os
 import threading
 import json
 from fastapi import FastAPI, HTTPException, Header, Depends
-from pydantic import BaseModel
-from typing import List, Optional, Dict
+from pydantic import BaseModel, EmailStr
+from typing import List, Optional
 from cerebras.cloud.sdk import Cerebras
 from groq import Groq
 
@@ -37,6 +37,10 @@ class ChatCompletionRequest(BaseModel):
 class ChatCompletionResponse(BaseModel):
     content: str
 
+class GenerateApiKeyRequest(BaseModel):
+    name: str
+    email: EmailStr
+
 def generate_api_key(length=30):
     """Generates a random API key of the given length."""
     import random
@@ -59,11 +63,14 @@ def save_api_keys(api_keys):
         with open('api_keys.json', 'w') as f:
             json.dump(api_keys, f, indent=4)
 
-def add_api_key(client_name):
+def add_api_key(client_name, client_email):
     """Generates a new API key, adds it to api_keys.json, and returns the key."""
     api_keys = load_api_keys()
     new_key = generate_api_key()
-    api_keys[new_key] = client_name
+    api_keys[new_key] = {
+        "name": client_name,
+        "email": client_email
+    }
     save_api_keys(api_keys)
     return new_key
 
@@ -88,9 +95,18 @@ def get_master_client(service_name: str):
 
 # Endpoint to generate a new API key for the client
 @app.post("/generate_api_key")
-async def generate_api_key_endpoint(client_name: str):
+async def generate_api_key_endpoint(request: GenerateApiKeyRequest):
     """API endpoint to generate a new API key."""
-    new_key = add_api_key(client_name)
+    client_name = request.name
+    client_email = request.email
+
+    # Optionally, check if the email already exists
+    api_keys = load_api_keys()
+    for key_info in api_keys.values():
+        if key_info['email'].lower() == client_email.lower():
+            raise HTTPException(status_code=400, detail="An API key has already been generated for this email.")
+
+    new_key = add_api_key(client_name, client_email)
     return {"api_key": new_key}
 
 # Endpoint to handle chat completions
@@ -111,8 +127,8 @@ async def chat_completions(
                 messages=messages,
                 model=request.model,
             )
-            # Assuming Cerebras returns the content directly
-            content = chat_completion  # Adjust based on actual response
+            # Adjust based on actual response from Cerebras
+            content = chat_completion.get('content', '')
 
         elif service_name == "groq":
             # Groq API call
