@@ -33,7 +33,7 @@ api_keys_lock = threading.Lock()
 # Define the ChatLog model
 # class ChatLog(Base):
 #     __tablename__ = 'chat_logs'
-    
+
 #     id = Column(Integer, primary_key=True, index=True)
 #     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 #     client_name = Column(String(100))
@@ -42,6 +42,7 @@ api_keys_lock = threading.Lock()
 #     model_name = Column(String(100))
 #     client_message = Column(Text)
 #     content_in_response = Column(Text)
+#     raw_response = Column(JSONB)
 
 # # Create the tables in the database
 # Base.metadata.create_all(bind=engine)
@@ -187,6 +188,30 @@ def log_to_database(log_entry):
         logger.error(f"Error logging to database: {e}")
     finally:
         session.close()
+        
+def serialize_chat_completion(chat_completion):
+    """Serializes the chat_completion object to a JSON-serializable format."""
+    try:
+        return chat_completion.dict()
+    except AttributeError:
+        pass
+
+    try:
+        return vars(chat_completion)
+    except TypeError:
+        pass
+
+    # Custom serialization
+    import json
+
+    class CustomEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if hasattr(obj, '__dict__'):
+                return obj.__dict__
+            else:
+                return str(obj)
+
+    return json.loads(json.dumps(chat_completion, cls=CustomEncoder))
 
 # Initialize the api_keys.json file at startup
 initialize_api_keys_file()
@@ -237,7 +262,7 @@ async def chat_completions(
             [msg.content for msg in request.messages if msg.role == 'user']
         )
 
-        # Process the request
+        # Process the request and capture the raw response
         if service_name == "cerebras":
             chat_completion = client.chat.completions.create(
                 messages=messages,
@@ -255,14 +280,18 @@ async def chat_completions(
         else:
             raise ValueError(f"Unsupported service_name: {service_name}")
 
-        # # Log the data to the database
+        # Serialize the raw response
+        raw_response = serialize_chat_completion(chat_completion)
+
+        # Log the data to the database
         # log_entry = ChatLog(
         #     client_name=client_name,
         #     client_email=client_email,
         #     service_name=service_name,
         #     model_name=model_name,
         #     client_message=client_message.strip(),
-        #     content_in_response=content_in_response.strip()
+        #     content_in_response=content_in_response.strip(),
+        #     raw_response=raw_response  # New field
         # )
         # log_to_database(log_entry)
 
