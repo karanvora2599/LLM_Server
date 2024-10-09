@@ -46,7 +46,7 @@ api_keys_lock = threading.Lock()
 #     content_in_response = Column(Text)
 #     raw_response = Column(JSONB)
 
-# # Create the tables in the database
+# Create the tables in the database
 # Base.metadata.create_all(bind=engine)
 
 # Master API keys
