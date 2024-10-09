@@ -53,6 +53,7 @@ api_keys_lock = threading.Lock()
 MASTER_SERVICE_API_KEYS = {
     # "cerebras": os.environ.get("CEREBRAS_API_KEY"),
     # "groq": os.environ.get("GROQ_API_KEY"),
+    # "sambanova": os.environ.get("SAMBANOVA_API_KEY"),
     # Add more services as needed
     "cerebras": "csk-e2e8kypw838rwmpjxd9nx2vn5jrertm339fnrcnt9c6p8hmx",
     "groq": "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",
