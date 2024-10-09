@@ -4,11 +4,12 @@ import json
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel, EmailStr
-from typing import List
+from typing import List, Optional, Union
 from cerebras.cloud.sdk import Cerebras
 from groq import Groq
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, func
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.dialects.postgresql import JSONB  # For PostgreSQL JSONB field
 import logging
 
 # Set up logging
@@ -98,6 +99,11 @@ class ChatCompletionRequest(BaseModel):
     messages: List[Message]
     model: str
     service_name: str
+    temperature: Optional[float] = 1.0
+    max_tokens: Optional[int] = 1024
+    top_p: Optional[float] = 1.0
+    stream: Optional[bool] = False
+    stop: Optional[Union[str, List[str]]] = None
 
 class ChatCompletionResponse(BaseModel):
     content: str
@@ -262,19 +268,27 @@ async def chat_completions(
             [msg.content for msg in request.messages if msg.role == 'user']
         )
 
+        # Prepare parameters for the API call
+        api_call_params = {
+            "messages": messages,
+            "model": model_name,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "top_p": request.top_p,
+            "stream": request.stream,
+            "stop": request.stop,
+        }
+
+        # Remove parameters with None values to avoid issues
+        api_call_params = {k: v for k, v in api_call_params.items() if v is not None}
+
         # Process the request and capture the raw response
         if service_name == "cerebras":
-            chat_completion = client.chat.completions.create(
-                messages=messages,
-                model=model_name,
-            )
+            chat_completion = client.chat.completions.create(**api_call_params)
             content_in_response = chat_completion.choices[0].message.content
 
         elif service_name == "groq":
-            chat_completion = client.chat.completions.create(
-                messages=messages,
-                model=model_name,
-            )
+            chat_completion = client.chat.completions.create(**api_call_params)
             content_in_response = chat_completion.choices[0].message.content
 
         else:
