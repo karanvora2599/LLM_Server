@@ -3,7 +3,7 @@ import threading
 import json
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Union
 from cerebras.cloud.sdk import Cerebras
 from groq import Groq
@@ -99,11 +99,54 @@ class ChatCompletionRequest(BaseModel):
     messages: List[Message]
     model: str
     service_name: str
-    temperature: Optional[float] = 1.0
-    max_tokens: Optional[int] = 1024
-    top_p: Optional[float] = 1.0
+    temperature: Optional[float] = Field(1.0, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(1024, ge=1)
+    top_p: Optional[float] = Field(1.0, ge=0.0, le=1.0)
     stream: Optional[bool] = False
     stop: Optional[Union[str, List[str]]] = None
+
+    @validator('messages')
+    def messages_must_not_be_empty(cls, v):
+        if not v:
+            raise ValueError('The "messages" field must contain at least one message.')
+        return v
+
+    @validator('temperature')
+    def temperature_in_range(cls, v):
+        if v is not None and not (0.0 <= v <= 2.0):
+            raise ValueError('The "temperature" must be between 0.0 and 2.0.')
+        return v
+
+    @validator('max_tokens')
+    def max_tokens_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError('The "max_tokens" must be a positive integer.')
+        return v
+
+    @validator('top_p')
+    def top_p_in_range(cls, v):
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError('The "top_p" must be between 0.0 and 1.0.')
+        return v
+
+    @validator('stream')
+    def stream_must_be_bool(cls, v):
+        if not isinstance(v, bool):
+            raise ValueError('The "stream" parameter must be a boolean.')
+        return v
+
+    @validator('stop')
+    def stop_valid(cls, v):
+        if v is not None:
+            if isinstance(v, str):
+                if not v.strip():
+                    raise ValueError('The "stop" string must not be empty.')
+            elif isinstance(v, list):
+                if not all(isinstance(item, str) and item.strip() for item in v):
+                    raise ValueError('All elements in "stop" list must be non-empty strings.')
+            else:
+                raise ValueError('The "stop" parameter must be a string or a list of strings.')
+        return v
 
 class ChatCompletionResponse(BaseModel):
     content: str
