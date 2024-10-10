@@ -172,7 +172,8 @@ class GenerateApiKeyRequest(BaseModel):
     privilege: str = 'user'
     
 class DeleteApiKeyRequest(BaseModel):
-    email: EmailStr
+    admin_email: EmailStr
+    email_to_delete: EmailStr
 
 def generate_api_key(length=30):
     import random
@@ -332,28 +333,36 @@ async def generate_api_key_endpoint(
 @app.delete("/delete_api_key")
 async def delete_api_key_endpoint(
     request: DeleteApiKeyRequest,
-    api_key_info: dict = Depends(authenticate_client),
 ):
     """API endpoint to delete an API key by email."""
-    if api_key_info.get('privilege') != 'admin':
-        raise HTTPException(status_code=403, detail="Admin privilege required to delete API keys")
-    
-    client_email = request.email.lower()
-    
+    admin_email = request.admin_email.lower()
+    email_to_delete = request.email_to_delete.lower()
+
     with api_keys_lock:
         api_keys = load_api_keys()
+        # Check if admin_email has an admin API key
+        admin_api_key = None
+        for key, info in api_keys.items():
+            if info['email'].lower() == admin_email and info.get('privilege') == 'admin':
+                admin_api_key = key
+                break
+
+        if not admin_api_key:
+            raise HTTPException(status_code=403, detail="Admin privilege required to delete API keys")
+
+        # Proceed to delete the API key associated with email_to_delete
         key_to_delete = None
         for key, info in api_keys.items():
-            if info['email'].lower() == client_email:
+            if info['email'].lower() == email_to_delete:
                 key_to_delete = key
                 break
-    
+
         if key_to_delete:
             del api_keys[key_to_delete]
             save_api_keys(api_keys)
-            return {"detail": f"API key associated with email {client_email} has been deleted."}
+            return {"detail": f"API key associated with email {email_to_delete} has been deleted."}
         else:
-            raise HTTPException(status_code=404, detail=f"No API key found for email {client_email}.")
+            raise HTTPException(status_code=404, detail=f"No API key found for email {email_to_delete}.")
 
 @app.post("/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(
