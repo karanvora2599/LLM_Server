@@ -169,6 +169,7 @@ class ChatCompletionResponse(BaseModel):
 class GenerateApiKeyRequest(BaseModel):
     name: str
     email: EmailStr
+    privilege: str = 'user'
     
 class DeleteApiKeyRequest(BaseModel):
     email: EmailStr
@@ -214,23 +215,35 @@ def save_api_keys(api_keys):
         with open('api_keys.json', 'w') as f:
             json.dump(api_keys, f, indent=4)
 
-def add_api_key(client_name, client_email):
+def add_api_key(client_name, client_email, privilege='user'):
     """Generates a new API key, adds it to api_keys.json, and returns the key."""
     api_keys = load_api_keys()
+    # Check if email already exists
+    for key, info in api_keys.items():
+        if info['email'].lower() == client_email.lower():
+            raise ValueError("An API key has already been generated for this email.")
     new_key = generate_api_key()
     api_keys[new_key] = {
         "name": client_name,
-        "email": client_email
+        "email": client_email,
+        "privilege": privilege
     }
     save_api_keys(api_keys)
     return new_key
 
-def authenticate_client(api_key: str = Header(...)):
-    """Dependency function to authenticate the client."""
+def authenticate_client(api_key: str = Header(..., alias="api-key")):
+    """Dependency function to authenticate the client and return their info."""
     api_keys = load_api_keys()
     if api_key not in api_keys:
         raise HTTPException(status_code=401, detail="Invalid API Key")
-    return api_key
+    return api_keys[api_key]
+
+
+def authenticate_client_optional(api_key: str = Header(None, alias="api-key")):
+    """Dependency function to optionally authenticate the client."""
+    if api_key is None:
+        return None
+    return authenticate_client(api_key)
 
 def authenticate_admin(admin_api_key: str = Header(..., alias="admin-api-key")):
     """Dependency function to authenticate admin for sensitive operations."""
@@ -247,6 +260,9 @@ def get_master_client(service_name: str):
     elif service_name == "groq":
         api_key = MASTER_SERVICE_API_KEYS["groq"]
         return Groq(api_key=api_key)
+    elif service_name == "sambanova":
+        # No client needed; handled in the endpoint
+        return None
     else:
         raise ValueError(f"Unsupported service_name: {service_name}")
 
@@ -290,27 +306,40 @@ def serialize_chat_completion(chat_completion):
 initialize_api_keys_file()
 
 @app.post("/generate_api_key")
-async def generate_api_key_endpoint(request: GenerateApiKeyRequest):
+async def generate_api_key_endpoint(
+    request: GenerateApiKeyRequest,
+    api_key_info: dict = Depends(authenticate_client_optional),
+):
     """API endpoint to generate a new API key."""
     client_name = request.name
     client_email = request.email
-
-    api_keys = load_api_keys()
-    for key_info in api_keys.values():
-        if key_info['email'].lower() == client_email.lower():
-            raise HTTPException(status_code=400, detail="An API key has already been generated for this email.")
-
-    new_key = add_api_key(client_name, client_email)
-    return {"api_key": new_key}
+    privilege = request.privilege.lower()
+    
+    if privilege not in ['user', 'admin']:
+        raise HTTPException(status_code=400, detail="Invalid privilege level")
+    
+    if privilege == 'admin':
+        # Require authentication as admin
+        if api_key_info is None or api_key_info.get('privilege') != 'admin':
+            raise HTTPException(status_code=403, detail="Admin privilege required to generate admin API key")
+    
+    try:
+        new_key = add_api_key(client_name, client_email, privilege)
+        return {"api_key": new_key}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
 
 @app.delete("/delete_api_key")
 async def delete_api_key_endpoint(
     request: DeleteApiKeyRequest,
-    admin_api_key: str = Depends(authenticate_admin),
+    api_key_info: dict = Depends(authenticate_client),
 ):
     """API endpoint to delete an API key by email."""
+    if api_key_info.get('privilege') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin privilege required to delete API keys")
+    
     client_email = request.email.lower()
-
+    
     with api_keys_lock:
         api_keys = load_api_keys()
         key_to_delete = None
@@ -318,7 +347,7 @@ async def delete_api_key_endpoint(
             if info['email'].lower() == client_email:
                 key_to_delete = key
                 break
-
+    
         if key_to_delete:
             del api_keys[key_to_delete]
             save_api_keys(api_keys)
