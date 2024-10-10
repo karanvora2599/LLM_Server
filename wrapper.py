@@ -170,6 +170,7 @@ class GenerateApiKeyRequest(BaseModel):
     name: str
     email: EmailStr
     privilege: str = 'user'
+    master_key: str
     
 class DeleteApiKeyRequest(BaseModel):
     admin_email: EmailStr
@@ -313,24 +314,24 @@ def serialize_chat_completion(chat_completion):
 # Initialize the api_keys.json file at startup
 initialize_api_keys_file()
 
-@app.post("/generate_api_key")
+app.post("/generate_api_key")
 async def generate_api_key_endpoint(
     request: GenerateApiKeyRequest,
-    api_key_info: dict = Depends(authenticate_client_optional),
 ):
     """API endpoint to generate a new API key."""
     client_name = request.name
     client_email = request.email
     privilege = request.privilege.lower()
-    
+    master_key = request.master_key
+
+    # Validate the master_key
+    if master_key not in MASTER_SERVICE_API_KEYS.values():
+        raise HTTPException(status_code=401, detail="Invalid master key")
+
     if privilege not in ['user', 'admin']:
         raise HTTPException(status_code=400, detail="Invalid privilege level")
-    
-    if privilege == 'admin':
-        # Require authentication as admin
-        if api_key_info is None or api_key_info.get('privilege') != 'admin':
-            raise HTTPException(status_code=403, detail="Admin privilege required to generate admin API key")
-    
+
+    # Proceed to generate the API key
     try:
         new_key = add_api_key(client_name, client_email, privilege)
         return {"api_key": new_key}
