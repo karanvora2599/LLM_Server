@@ -64,6 +64,11 @@ for service, api_key in MASTER_SERVICE_API_KEYS.items():
     if not api_key:
         raise Exception(f"Master API key for {service} is not set in environment variables.")
     
+# Admin API key for sensitive operations
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY")
+if not ADMIN_API_KEY:
+    raise Exception("ADMIN_API_KEY environment variable not set")
+    
 # Available models for each service
 SERVICE_MODELS = {
     "groq": {
@@ -164,6 +169,9 @@ class ChatCompletionResponse(BaseModel):
 class GenerateApiKeyRequest(BaseModel):
     name: str
     email: EmailStr
+    
+class DeleteApiKeyRequest(BaseModel):
+    email: EmailStr
 
 def generate_api_key(length=30):
     import random
@@ -223,6 +231,12 @@ def authenticate_client(api_key: str = Header(...)):
     if api_key not in api_keys:
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return api_key
+
+def authenticate_admin(admin_api_key: str = Header(..., alias="admin-api-key")):
+    """Dependency function to authenticate admin for sensitive operations."""
+    if admin_api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid Admin API Key")
+    return admin_api_key
 
 def get_master_client(service_name: str):
     """Returns the appropriate master API client based on the service name."""
@@ -288,6 +302,29 @@ async def generate_api_key_endpoint(request: GenerateApiKeyRequest):
 
     new_key = add_api_key(client_name, client_email)
     return {"api_key": new_key}
+
+@app.delete("/delete_api_key")
+async def delete_api_key_endpoint(
+    request: DeleteApiKeyRequest,
+    admin_api_key: str = Depends(authenticate_admin),
+):
+    """API endpoint to delete an API key by email."""
+    client_email = request.email.lower()
+
+    with api_keys_lock:
+        api_keys = load_api_keys()
+        key_to_delete = None
+        for key, info in api_keys.items():
+            if info['email'].lower() == client_email:
+                key_to_delete = key
+                break
+
+        if key_to_delete:
+            del api_keys[key_to_delete]
+            save_api_keys(api_keys)
+            return {"detail": f"API key associated with email {client_email} has been deleted."}
+        else:
+            raise HTTPException(status_code=404, detail=f"No API key found for email {client_email}.")
 
 @app.post("/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(
