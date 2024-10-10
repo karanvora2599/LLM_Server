@@ -40,6 +40,7 @@ api_keys_lock = threading.Lock()
 #     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 #     client_name = Column(String(100))
 #     client_email = Column(String(100))
+#     client_privilege = Column(String(20))  # New column
 #     service_name = Column(String(50))
 #     model_name = Column(String(100))
 #     client_message = Column(Text)
@@ -434,6 +435,7 @@ async def chat_completions(
         client_info = api_keys[api_key]
         client_name = client_info['name']
         client_email = client_info['email']
+        client_privilege = api_key.get('privilege', 'user')
 
         # Extract client message
         client_message = ' '.join(
@@ -478,15 +480,15 @@ async def chat_completions(
         # Serialize the raw response
         raw_response = serialize_chat_completion(chat_completion)
 
-        # Log the data to the database
         # log_entry = ChatLog(
         #     client_name=client_name,
         #     client_email=client_email,
+        #     client_privilege=client_privilege,
         #     service_name=service_name,
         #     model_name=model_name,
         #     client_message=client_message.strip(),
         #     content_in_response=content_in_response.strip(),
-        #     raw_response=raw_response  # New field
+        #     raw_response=raw_response
         # )
         # log_to_database(log_entry)
 
