@@ -46,7 +46,7 @@ api_keys_lock = threading.Lock()
 #     content_in_response = Column(Text)
 #     raw_response = Column(JSONB)
 
-# Create the tables in the database
+# # Create the tables in the database
 # Base.metadata.create_all(bind=engine)
 
 # Master API keys
@@ -81,7 +81,7 @@ SERVICE_MODELS = {
         "llama-3.2-90b-text-preview",
         "llama-guard-3-8b",
         "llama3-70b-8192",
-        "llama-8b-8192",
+        "llama3-8b-8192",
         "mixtral-8x7b-32768",
         "whisper-large-v3",
         "whisper-large-v3-turbo",
