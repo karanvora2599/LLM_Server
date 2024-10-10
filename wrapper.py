@@ -173,6 +173,7 @@ class GenerateApiKeyRequest(BaseModel):
     
 class DeleteApiKeyRequest(BaseModel):
     admin_email: EmailStr
+    admin_api_key: str
     email_to_delete: EmailStr
 
 def generate_api_key(length=30):
@@ -231,6 +232,12 @@ def add_api_key(client_name, client_email, privilege='user'):
     }
     save_api_keys(api_keys)
     return new_key
+
+class ChangePrivilegeRequest(BaseModel):
+    admin_email: EmailStr
+    admin_api_key: str
+    email_to_change: EmailStr
+    new_privilege: str
 
 def authenticate_client(api_key: str = Header(..., alias="api-key")):
     """Dependency function to authenticate the client and return their info."""
@@ -336,18 +343,17 @@ async def delete_api_key_endpoint(
 ):
     """API endpoint to delete an API key by email."""
     admin_email = request.admin_email.lower()
+    admin_api_key = request.admin_api_key
     email_to_delete = request.email_to_delete.lower()
 
     with api_keys_lock:
         api_keys = load_api_keys()
-        # Check if admin_email has an admin API key
-        admin_api_key = None
-        for key, info in api_keys.items():
-            if info['email'].lower() == admin_email and info.get('privilege') == 'admin':
-                admin_api_key = key
-                break
-
-        if not admin_api_key:
+        # Verify the admin's API key and privilege
+        if admin_api_key not in api_keys:
+            raise HTTPException(status_code=401, detail="Invalid Admin API Key")
+        
+        admin_info = api_keys[admin_api_key]
+        if admin_info['email'].lower() != admin_email or admin_info.get('privilege') != 'admin':
             raise HTTPException(status_code=403, detail="Admin privilege required to delete API keys")
 
         # Proceed to delete the API key associated with email_to_delete
@@ -363,6 +369,43 @@ async def delete_api_key_endpoint(
             return {"detail": f"API key associated with email {email_to_delete} has been deleted."}
         else:
             raise HTTPException(status_code=404, detail=f"No API key found for email {email_to_delete}.")
+        
+@app.put("/change_privilege")
+async def change_privilege_endpoint(
+    request: ChangePrivilegeRequest,
+):
+    """API endpoint to change the privilege level of an API key."""
+    admin_email = request.admin_email.lower()
+    admin_api_key = request.admin_api_key
+    email_to_change = request.email_to_change.lower()
+    new_privilege = request.new_privilege.lower()
+
+    if new_privilege not in ['user', 'admin']:
+        raise HTTPException(status_code=400, detail="Invalid privilege level")
+
+    with api_keys_lock:
+        api_keys = load_api_keys()
+        # Verify the admin's API key and privilege
+        if admin_api_key not in api_keys:
+            raise HTTPException(status_code=401, detail="Invalid Admin API Key")
+
+        admin_info = api_keys[admin_api_key]
+        if admin_info['email'].lower() != admin_email or admin_info.get('privilege') != 'admin':
+            raise HTTPException(status_code=403, detail="Admin privilege required to change privilege levels")
+
+        # Find the API key associated with email_to_change
+        key_to_change = None
+        for key, info in api_keys.items():
+            if info['email'].lower() == email_to_change:
+                key_to_change = key
+                break
+
+        if key_to_change:
+            api_keys[key_to_change]['privilege'] = new_privilege
+            save_api_keys(api_keys)
+            return {"detail": f"Privilege for email {email_to_change} has been changed to {new_privilege}."}
+        else:
+            raise HTTPException(status_code=404, detail=f"No API key found for email {email_to_change}.")
 
 @app.post("/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(
