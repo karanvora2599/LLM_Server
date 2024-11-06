@@ -26,32 +26,32 @@ app = FastAPI()
 api_keys_lock = threading.Lock()
 
 # Database setup
-# DATABASE_URL = os.environ.get("DATABASE_URL")  # Ensure this is set in your environment
+DATABASE_URL = os.environ.get("DATABASE_URL")  # Ensure this is set in your environment
 
-# if not DATABASE_URL:
-#     raise Exception("DATABASE_URL environment variable not set")
+if not DATABASE_URL:
+    raise Exception("DATABASE_URL environment variable not set")
 
-# engine = create_engine(DATABASE_URL)
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-# Base = declarative_base()
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 # Define the ChatLog model
-# class ChatLog(Base):
-#     __tablename__ = 'chat_logs'
+class ChatLog(Base):
+    __tablename__ = 'chat_logs'
 
-#     id = Column(Integer, primary_key=True, index=True)
-#     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-#     client_name = Column(String(100))
-#     client_email = Column(String(100))
-#     client_privilege = Column(String(20))
-#     service_name = Column(String(50))
-#     model_name = Column(String(100))
-#     client_message = Column(Text)
-#     content_in_response = Column(Text)
-#     raw_response = Column(JSONB)
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    client_name = Column(String(100))
+    client_email = Column(String(100))
+    client_privilege = Column(String(20))
+    service_name = Column(String(50))
+    model_name = Column(String(100))
+    client_message = Column(Text)
+    content_in_response = Column(Text)
+    raw_response = Column(JSONB)
 
 # Create the tables in the database
-# Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # Master API keys
 MASTER_SERVICE_API_KEYS = {
@@ -571,17 +571,17 @@ async def chat_completions(
         raw_response = serialize_chat_completion(chat_completion)
 
         # Log the data to the database
-        # log_entry = ChatLog(
-        #     client_name=client_name,
-        #     client_email=client_email,
-        #     client_privilege=client_privilege,
-        #     service_name=service_name,
-        #     model_name=model_name,
-        #     client_message=client_message.strip(),
-        #     content_in_response=content_in_response.strip(),
-        #     raw_response=raw_response
-        # )
-        # log_to_database(log_entry)
+        log_entry = ChatLog(
+            client_name=client_name,
+            client_email=client_email,
+            client_privilege=client_privilege,
+            service_name=service_name,
+            model_name=model_name,
+            client_message=client_message.strip(),
+            content_in_response=content_in_response.strip(),
+            raw_response=raw_response
+        )
+        log_to_database(log_entry)
 
         return ChatCompletionResponse(content=content_in_response)
 

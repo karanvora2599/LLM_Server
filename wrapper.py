@@ -66,9 +66,9 @@ for service, api_key in MASTER_SERVICE_API_KEYS.items():
         raise Exception(f"Master API key for {service} is not set in environment variables.")
     
 # Admin API key for sensitive operations
-ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY")
-if not ADMIN_API_KEY:
-    raise Exception("ADMIN_API_KEY environment variable not set")
+# ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY")
+# if not ADMIN_API_KEY:
+#     raise Exception("ADMIN_API_KEY environment variable not set")
     
 # Available models for each service
 SERVICE_MODELS = {
@@ -155,10 +155,10 @@ class ChatCompletionRequest(BaseModel):
     def stop_valid(cls, v):
         if v is not None:
             if isinstance(v, str):
-                if not v.strip():
+                if len(v) == 0:
                     raise ValueError('The "stop" string must not be empty.')
             elif isinstance(v, list):
-                if not all(isinstance(item, str) and item.strip() for item in v):
+                if not all(isinstance(item, str) and len(item) > 0 for item in v):
                     raise ValueError('All elements in "stop" list must be non-empty strings.')
             else:
                 raise ValueError('The "stop" parameter must be a string or a list of strings.')
@@ -409,10 +409,102 @@ async def change_privilege_endpoint(
         else:
             raise HTTPException(status_code=404, detail=f"No API key found for email {email_to_change}.")
 
+# @app.post("/chat/completions", response_model=ChatCompletionResponse)
+# async def chat_completions(
+#     request: ChatCompletionRequest,
+#     api_key: str = Depends(authenticate_client),
+# ):
+#     service_name = request.service_name.lower()
+#     model_name = request.model
+
+#     try:
+#         # Validate the service name
+#         if service_name not in SERVICE_MODELS:
+#             raise ValueError(f"Unsupported service_name: {service_name}")
+
+#         # Validate the model availability
+#         available_models = SERVICE_MODELS[service_name]
+#         if model_name not in available_models:
+#             raise ValueError(f"Model '{model_name}' is not available for service '{service_name}'.")
+
+#         client = get_master_client(service_name)
+#         messages = [message.dict() for message in request.messages]
+
+#         # Retrieve client information
+#         api_keys = load_api_keys()
+#         client_info = api_keys[api_key]
+#         client_name = client_info['name']
+#         client_email = client_info['email']
+#         client_privilege = api_key.get('privilege', 'user')
+
+#         # Extract client message
+#         client_message = ' '.join(
+#             [msg.content for msg in request.messages if msg.role == 'user']
+#         )
+
+#         # Prepare parameters for the API call
+#         api_call_params = {
+#             "messages": messages,
+#             "model": model_name,
+#             "temperature": request.temperature,
+#             "max_tokens": request.max_tokens,
+#             "top_p": request.top_p,
+#             "stream": request.stream,
+#             "stop": request.stop,
+#         }
+
+#         # Remove parameters with None values to avoid issues
+#         api_call_params = {k: v for k, v in api_call_params.items() if v is not None}
+
+#         # Process the request and capture the raw response
+#         if service_name == "cerebras":
+#             chat_completion = client.chat.completions.create(**api_call_params)
+#             content_in_response = chat_completion.choices[0].message.content
+
+#         elif service_name == "groq":
+#             chat_completion = client.chat.completions.create(**api_call_params)
+#             content_in_response = chat_completion.choices[0].message.content
+        
+#         elif service_name == "sambanova":
+#             # Add API key and base URL to parameters
+#             api_call_params["api_key"] = MASTER_SERVICE_API_KEYS['sambanova']
+#             api_call_params["api_base"] = "https://api.sambanova.ai/v1"
+
+#             # Process the request and capture the raw response
+#             chat_completion = openai.ChatCompletion.create(**api_call_params)
+#             content_in_response = chat_completion.choices[0].message.content
+
+#         else:
+#             raise ValueError(f"Unsupported service_name: {service_name}")
+
+#         # Serialize the raw response
+#         raw_response = serialize_chat_completion(chat_completion)
+
+#         # log_entry = ChatLog(
+#         #     client_name=client_name,
+#         #     client_email=client_email,
+#         #     client_privilege=client_privilege,
+#         #     service_name=service_name,
+#         #     model_name=model_name,
+#         #     client_message=client_message.strip(),
+#         #     content_in_response=content_in_response.strip(),
+#         #     raw_response=raw_response
+#         # )
+#         # log_to_database(log_entry)
+
+#         return ChatCompletionResponse(content=content_in_response)
+
+#     except ValueError as ve:
+#         logger.error(f"ValueError in chat_completions endpoint: {ve}")
+#         raise HTTPException(status_code=400, detail=str(ve))
+#     except Exception as e:
+#         logger.error(f"Error in chat_completions endpoint: {e}")
+#         raise HTTPException(status_code=500, detail="Internal Server Error")
+
 @app.post("/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(
     request: ChatCompletionRequest,
-    api_key: str = Depends(authenticate_client),
+    client_info: dict = Depends(authenticate_client),
 ):
     service_name = request.service_name.lower()
     model_name = request.model
@@ -431,15 +523,13 @@ async def chat_completions(
         messages = [message.dict() for message in request.messages]
 
         # Retrieve client information
-        api_keys = load_api_keys()
-        client_info = api_keys[api_key]
         client_name = client_info['name']
         client_email = client_info['email']
-        client_privilege = api_key.get('privilege', 'user')
+        client_privilege = client_info.get('privilege', 'user')
 
         # Extract client message
         client_message = ' '.join(
-            [msg.content for msg in request.messages if msg.role == 'user']
+            [msg['content'] for msg in messages if msg['role'] == 'user']
         )
 
         # Prepare parameters for the API call
@@ -464,7 +554,7 @@ async def chat_completions(
         elif service_name == "groq":
             chat_completion = client.chat.completions.create(**api_call_params)
             content_in_response = chat_completion.choices[0].message.content
-        
+
         elif service_name == "sambanova":
             # Add API key and base URL to parameters
             api_call_params["api_key"] = MASTER_SERVICE_API_KEYS['sambanova']
