@@ -59,9 +59,9 @@ MASTER_SERVICE_API_KEYS = {
     # "groq": os.environ.get("GROQ_API_KEY"),
     # "sambanova": os.environ.get("SAMBANOVA_API_KEY"),
     # Add more services as needed
-    "cerebras": "csk-e2e8kypw838rwmpjxd9nx2vn5jrertm339fnrcnt9c6p8hmx",
-    "groq": "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",
-    "sambanova": "2e1e850b-24f9-4abd-89a6-5cfc61d4ca50"
+    "cerebras": "",
+    "groq": "",
+    "sambanova": ""
 }
 
 for service, api_key in MASTER_SERVICE_API_KEYS.items():
